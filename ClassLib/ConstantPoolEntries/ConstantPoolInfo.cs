@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ClassLib.ConstantPoolEntries
 {
-    public abstract class ConstantPoolEntry
+    public abstract class ConstantPoolInfo
     {
         public byte Tag { get; set; }
     }

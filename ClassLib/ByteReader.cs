@@ -1,74 +1,89 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace JVM
 {
-    internal class ByteReader
+    public class ByteReader
     {
-        private readonly byte[] data;
-        private int position;
+        private ReadOnlyMemory<byte> data;
 
         public ByteReader(byte[] data)
         {
+            this.data = new ReadOnlyMemory<byte>(data);
+        }
+
+        public ByteReader(ReadOnlyMemory<byte> data)
+        {
             this.data = data;
-            position = 0;
         }
 
         public byte ReadU1()
         {
-            if (position >= data.Length)
-            {
+            if (data.Length < 1)
                 throw new IndexOutOfRangeException("Reached end of data");
-            }
 
-            return data[position++];
+            byte result = data.Slice(1).Span[0];
+
+            data = data.Slice(1); // Move the reader forward by 1 byte
+
+            return result;
         }
 
         public ushort ReadU2()
         {
-            byte high = ReadU1();
-            byte low = ReadU1();
-            return (ushort)((high << 8) | low);
+            if(data.Length < 2)
+                throw new IndexOutOfRangeException("Not enough data to read a 2-byte value");
+
+            var bytes = data.Slice(0, 2);
+            
+            data = data.Slice(2); // Move the reader forward by 2 bytes
+
+            return (ushort)(bytes.Span[0] << 8 | bytes.Span[1]);
         }
 
         public uint ReadU4()
         {
-            byte b1 = ReadU1();
-            byte b2 = ReadU1();
-            byte b3 = ReadU1();
-            byte b4 = ReadU1();
-            return (uint)((b1 << 24) | (b2 << 16) | (b3 << 8) | b4);
+            if (data.Length < 4)
+                throw new IndexOutOfRangeException("Not enough data to read a 4-byte value");
+
+            var bytes = data.Slice(0, 4);
+
+            data = data.Slice(4); // Move the reader forward by 4 bytes
+
+            return (uint)(bytes.Span[0] << 24 | bytes.Span[1] << 16 | bytes.Span[2] << 8 | bytes.Span[3]);
         }
 
         public byte[] ReadBytes(int length)
         {
-            if (position + length > data.Length) 
-            {
+            if (data.Length < length)
                 throw new IndexOutOfRangeException("Attempted to read past end of data");
-            }
 
-            byte[] result = new byte[length];
-            Array.Copy(data, position, result, 0, length);
-            position += length;
-            return result;
+            byte[] bytes = data.Slice(0, length).ToArray();
+            data = data.Slice(length); // Move the reader forward by the length of the bytes read
+
+            return bytes;
         }
 
         public byte PeekU1()
         {
-            if (position >= data.Length)
-            {
+            if (data.Length < 1)
                 throw new IndexOutOfRangeException("Reached end of data");
-            }
 
-            return data[position];
+            return data.Span[0];
         }
 
         public bool IsEOF()
         {
-            return position >= data.Length;
+            return data.Length < 1;
+        }
+
+        internal ushort[] ReadU2Array()
+        {
+            throw new NotImplementedException();
         }
     }
 }
