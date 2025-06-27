@@ -1,4 +1,6 @@
-﻿using ClassLib.FieldsMethodsAttributes;
+﻿using ClassLib.ConstantPoolEntries;
+using ClassLib.FieldsMethodsAttributes;
+using JVM;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,96 +23,91 @@ namespace ClassLib.Attributes
             public byte[] Code { get; set; }
             public ExceptionTableEntry[] ExceptionTable { get; set; }
             public AttributeInfo[] Attributes { get; set; }
+
+            public static CodeAttribute Read(ByteReader reader, ushort attributeNameIndex, uint attributeLength, ConstantPoolInfo[] constantPool)
+            {
+                var attr = new CodeAttribute
+                {
+                    AttributeNameIndex = attributeNameIndex,
+                    AttributeLength = attributeLength,
+                    MaxStack = reader.ReadU2(),
+                    MaxLocals = reader.ReadU2()
+                };
+
+                uint codeLength = reader.ReadU4();
+                attr.Code = reader.ReadBytes((int)codeLength);
+
+                ushort exceptionTableLength = reader.ReadU2();
+                attr.ExceptionTable = ExceptionTableEntry.ReadExceptionTable(reader);
+
+                ushort attributesCount = reader.ReadU2();
+                attr.Attributes = new AttributeInfo[attributesCount];
+                for (int i = 0; i < attributesCount; i++)
+                {
+                    attr.Attributes[i] = ClassFile.ReadAttribute(reader, constantPool);
+                }
+
+                return attr;
+            }
         }
 
         public class StackMapTableAttribute : AttributeInfo
         {
-            public byte[] Info { get; set; }
+            public StackMapFrame[] Entries { get; set; }
+
+            public static StackMapTableAttribute Read(ByteReader reader, ushort attributeNameIndex, uint attributeLength, ConstantPoolInfo[] constantPool)
+            {
+                var attr = new StackMapTableAttribute
+                {
+                    AttributeNameIndex = attributeNameIndex,
+                    AttributeLength = attributeLength
+                };
+
+                ushort numberOfEntries = reader.ReadU2();
+                attr.Entries = new StackMapFrame[numberOfEntries];
+                for (int i = 0; i < numberOfEntries; i++)
+                {
+                    attr.Entries[i] = StackMapFrame.Read(reader, constantPool);
+                }
+                return attr;
+            }
         }
 
         public class ExceptionsAttribute : AttributeInfo
         {
             public ushort[] ExceptionIndexTable { get; set; }
+
+            public static ExceptionsAttribute Read(ByteReader reader, ushort attributeNameIndex, uint attributeLength)
+            {
+                var attr = new ExceptionsAttribute
+                {
+                    AttributeNameIndex = attributeNameIndex,
+                    AttributeLength = attributeLength
+                };
+                ushort numberOfExceptions = reader.ReadU2();
+                attr.ExceptionIndexTable = new ushort[numberOfExceptions];
+                for (int i = 0; i < numberOfExceptions; i++)
+                {
+                    attr.ExceptionIndexTable[i] = reader.ReadU2();
+                }
+                return attr;
+            }
         }
-
-        public class InnerClassesAttribute : AttributeInfo
-        {
-            public InnerClassEntry[] Classes { get; set; }
-        }
-
-        public class EnclosingMethodAttribute : AttributeInfo
-        {
-            public ushort ClassIndex { get; set; }
-            public ushort MethodIndex { get; set; }
-        }
-
-        public class SyntheticAttribute : AttributeInfo { }
-
-        public class SignatureAttribute : AttributeInfo
-        {
-            public ushort SignatureIndex { get; set; }
-        }
-
-        public class SourceFileAttribute : AttributeInfo
-        {
-            public ushort SourceFileIndex { get; set; }
-        }
-
-        public class SourceDebugExtensionAttribute : AttributeInfo
-        {
-            public byte[] DebugExtension { get; set; }
-        }
-
-        public class LineNumberTableAttribute : AttributeInfo
-        {
-            public LineNumberEntry[] LineNumberTable { get; set; }
-        }
-
-        public class LocalVariableTableAttribute : AttributeInfo
-        {
-            public LocalVariableEntry[] LocalVariableTable { get; set; }
-        }
-
-        public class LocalVariableTypeTableAttribute : AttributeInfo
-        {
-            public LocalVariableEntry[] LocalVariableTypeTable { get; set; }
-        }
-
-        public class DeprecatedAttribute : AttributeInfo { }
-
-        public class RuntimeVisibleAnnotationsAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
-        }
-
-        public class RuntimeInvisibleAnnotationsAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
-        }
-
-        public class RuntimeVisibleParameterAnnotationsAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
-        }
-
-        public class RuntimeInvisibleParameterAnnotationsAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
-        }
-
-        public class AnnotationDefaultAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
-        }
-
         public class BootstrapMethodsAttribute : AttributeInfo
         {
             public BootstrapMethodEntry[] BootstrapMethods { get; set; }
-        }
 
-        public class UnknownAttribute : AttributeInfo
-        {
-            public byte[] Info { get; set; }
+            public static BootstrapMethodsAttribute Read(ByteReader reader, ushort attributeNameIndex, uint attributeLength)
+            {
+                var attr = new BootstrapMethodsAttribute
+                {
+                    AttributeNameIndex = attributeNameIndex,
+                    AttributeLength = attributeLength
+                };
+                ushort numBootstrapMethods = reader.ReadU2();
+                attr.BootstrapMethods = BootstrapMethodEntry.ReadBootstrapMethods(reader);
+                return attr;
+            }
         }
     }
 }

@@ -13,6 +13,6 @@ namespace ClassLib
         public ushort NameIndex { get; set; }
         public ushort DescriptorIndex { get; set; }
         public ushort AttributesCount { get; set; }
-        public List<AttributeInfo> Attributes { get; set; } = new();
+        public AttributeInfo[] Attributes { get; set; }
     }
 }

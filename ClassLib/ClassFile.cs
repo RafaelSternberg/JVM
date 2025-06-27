@@ -42,7 +42,7 @@ namespace ClassLib
         private void Parse()
         {
             // 1. Magic Number (0xCAFEBABE)
-            Magic = (uint)reader.ReadU4Array();
+            Magic = (uint)reader.ReadU4();
             if (Magic != 0xCAFEBABE)
             {
                 throw new InvalidOperationException("Invalid class file magic number.");
@@ -92,16 +92,92 @@ namespace ClassLib
                     DescriptorIndex = reader.ReadU2()
                 };
 
-                ushort attributesCount = reader.ReadU2();
-                field.Attributes = new AttributeInfo[attributesCount];
-                for (int j = 0; j < attributesCount; j++)
+                ushort attributesCountFields = reader.ReadU2();
+                field.Attributes = new AttributeInfo[attributesCountFields];
+                for (int j = 0; j < attributesCountFields; j++)
                 {
-                    field.Attributes[j] = ReadAttribute();
+                    field.Attributes[j] = ReadAttribute(reader, ConstantPool);
                 }
 
                 Fields[i] = field;
             }
 
+            //9. Methods
+
+            ushort methodsCount = reader.ReadU2();
+            MethodInfo[] methods = new MethodInfo[methodsCount];
+            for (int i = 0; i < methodsCount; i++)
+            {
+                var method = new MethodInfo
+                {
+                    AccessFlags = reader.ReadU2(),
+                    NameIndex = reader.ReadU2(),
+                    DescriptorIndex = reader.ReadU2()
+                };
+                ushort attributesCountMethods = reader.ReadU2();
+                method.Attributes = new AttributeInfo[attributesCountMethods];
+                for (int j = 0; j < attributesCountMethods; j++)
+                {
+                    method.Attributes[j] = ReadAttribute(reader, ConstantPool);
+                }
+                Methods[i] = method;
+            }
+
+            // 10. Attributes
+
+            ushort attributesCount = reader.ReadU2();
+            Attributes = new AttributeInfo[attributesCount];
+            for (int i = 0; i < attributesCount; i++)
+            {
+                Attributes[i] = ReadAttribute(reader, ConstantPool);
+            }
+
+        }
+        public static AttributeInfo ReadAttribute(ByteReader reader, ConstantPoolInfo[] ConstantPool)
+        {
+            ushort attributeNameIndex = reader.ReadU2();
+            uint attributeLength = reader.ReadU4();
+
+            var utf8Entry = ConstantPool[attributeNameIndex] as ConstantTypes.ConstantUtf8;
+            if (utf8Entry == null)
+                throw new InvalidOperationException($"Attribute name at index {attributeNameIndex} is not a UTF8 entry.");
+
+            string attributeName = utf8Entry.Value;
+
+            AttributeInfo attribute;
+
+            switch (attributeName)
+            {
+                case "ConstantValue":
+                    attribute = new ConstantValueAttribute
+                    {
+                        AttributeNameIndex = attributeNameIndex,
+                        AttributeLength = attributeLength,
+                        ConstantValueIndex = reader.ReadU2()
+                    };
+                    break;
+
+                case "Code":
+                    attribute = CodeAttribute.Read(reader, attributeNameIndex, attributeLength, ConstantPool);
+                    break;
+
+                case "StackMapTable":
+                    attribute = StackMapTableAttribute.Read(reader, attributeNameIndex, attributeLength, ConstantPool);
+                    break;
+
+                case "Exceptions":
+                    attribute = ExceptionsAttribute.Read(reader, attributeNameIndex, attributeLength);
+                    break;
+
+                case "BootstrapMethods":
+                    attribute = BootstrapMethodsAttribute.Read(reader, attributeNameIndex, attributeLength);
+                    break;
+
+                default:
+                    throw new Exception($"Unknown attribute name: {attributeName} at index {attributeNameIndex}");
+            }
+
+            return attribute;
         }
 
         private ConstantPoolInfo ReadConstantPoolEntry()
@@ -127,179 +203,6 @@ namespace ClassLib
             };
             entry.Tag = tag;
             return entry;
-        }
-
-        private static readonly string[] KnownAttributeNames =
-        {
-            "ConstantValue",
-            "Code",
-            "StackMapTable",
-            "Exceptions",
-            "InnerClasses",
-            "EnclosingMethod",
-            "Synthetic",
-            "Signature",
-            "SourceFile",
-            "SourceDebugExtension",
-            "LineNumberTable",
-            "LocalVariableTable",
-            "LocalVariableTypeTable",
-            "Deprecated",
-            "RuntimeVisibleAnnotations",
-            "RuntimeInvisibleAnnotations",
-            "RuntimeVisibleParameterAnnotations",
-            "RuntimeInvisibleParameterAnnotations",
-            "AnnotationDefault",
-            "BootstrapMethods"
-};
-
-        private AttributeInfo ReadAttribute()
-        {
-            ushort nameIndex = reader.ReadU2();
-            uint length = reader.ReadU4();
-            string name = ((ConstantTypes.ConstantUtf8)ConstantPool[nameIndex]).Value;
-
-            int attrIndex = Array.IndexOf(KnownAttributeNames, name);
-
-            return attrIndex switch
-            {
-                0 => new ConstantValueAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    ConstantValueIndex = reader.ReadU2()
-                },
-
-                1 => new CodeAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    MaxStack = reader.ReadU2(),
-                    MaxLocals = reader.ReadU2(),
-                    Code = reader.ReadBytes(4), //need to be array
-                    ExceptionTable = ExceptionTableEntry.ReadExceptionTable(reader),
-                    Attributes = ReadAttributeList()
-                },
-
-                2 => new StackMapTableAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                3 => new ExceptionsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    ExceptionIndexTable = reader.ReadU2Array() //need array
-                },
-
-                4 => new InnerClassesAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Classes = ReadInnerClassEntries()
-                },
-
-                5 => new EnclosingMethodAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    ClassIndex = reader.ReadU2(),
-                    MethodIndex = reader.ReadU2()
-                },
-
-                6 => new SyntheticAttribute { AttributeNameIndex = nameIndex, AttributeLength = length },
-
-                7 => new SignatureAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    SignatureIndex = reader.ReadU2()
-                },
-
-                8 => new SourceFileAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    SourceFileIndex = reader.ReadU2()
-                },
-
-                9 => new SourceDebugExtensionAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    DebugExtension = reader.ReadBytes((int)length)
-                },
-
-                10 => new LineNumberTableAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    LineNumberTable = LineNumberEntry.ReadLineNumberTable(reader)
-                },
-
-                11 => new LocalVariableTableAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    LocalVariableTable = LocalVariableEntry.ReadLocalVariableTable(reader)
-                },
-
-                12 => new LocalVariableTypeTableAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    LocalVariableTypeTable = LocalVariableEntry.ReadLocalVariableTable(reader)
-                },
-
-                13 => new DeprecatedAttribute { AttributeNameIndex = nameIndex, AttributeLength = length },
-
-                14 => new RuntimeVisibleAnnotationsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                15 => new RuntimeInvisibleAnnotationsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                16 => new RuntimeVisibleParameterAnnotationsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                17 => new RuntimeInvisibleParameterAnnotationsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                18 => new AnnotationDefaultAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    Info = reader.ReadBytes((int)length)
-                },
-
-                19 => new BootstrapMethodsAttribute
-                {
-                    AttributeNameIndex = nameIndex,
-                    AttributeLength = length,
-                    BootstrapMethods = BootstrapMethodEntry.ReadBootstrapMethods(reader)
-                },
-
-                _ => throw new Exception("invalid attribute")
-            };
         }
     }
 }

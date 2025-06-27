@@ -1,4 +1,6 @@
-﻿namespace JVM
+﻿using ClassLib;
+
+namespace JVM
 {
     internal class Program
     {       
@@ -6,7 +8,7 @@
         {
             byte[] MachineCode = File.ReadAllBytes(@"\\GMRDC1\Folder Redirection\rafael.sternberg\Documents\JavaTesting\JavaTest.class");
 
-
+            ClassFile classFile = new ClassFile(MachineCode);
         }
     }
 }
